@@ -1,0 +1,29 @@
+name: ETF Nachricht
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+    - cron: '0 10 * * *'
+    - cron: '0 14 * * *'
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  sende-etf-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install yfinance requests
+      - run: python etf_nachricht.py
+      - name: Zustand zurueckspeichern
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add etf_state.json
+          git diff --staged --quiet || git commit -m "Zustand aktualisiert"
+          git push
