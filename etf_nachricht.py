@@ -37,10 +37,10 @@ STARTWERTE = {
     "letzter_verarbeiteter_monat": "2026-08"
 }
 
-# -----------------------------
-# Zustand laden/speichern
-# -----------------------------
 
+# -----------------------------
+# Zustand
+# -----------------------------
 
 def lade_zustand():
     if os.path.exists(STATE_DATEI):
@@ -58,7 +58,6 @@ def speichere_zustand(zustand):
 # Börsenfunktionen
 # -----------------------------
 
-
 def naechster_handelstag(datum):
     while datum.weekday() >= 5:
         datum += datetime.timedelta(days=1)
@@ -71,7 +70,6 @@ def ausfuehrungstag(jahr, monat):
 
 def hole_eroeffnungskurs(ticker, datum):
     t = yf.Ticker(ticker)
-
     hist = t.history(
         start=datum.isoformat(),
         end=(datum + datetime.timedelta(days=1)).isoformat()
@@ -123,7 +121,6 @@ def hole_tagesrichtung(ticker):
 # Sparplan
 # -----------------------------
 
-
 def pruefe_monatlichen_kauf(zustand):
     heute = datetime.date.today()
     dieser_monat = f"{heute.year}-{heute.month:02d}"
@@ -152,7 +149,6 @@ def pruefe_monatlichen_kauf(zustand):
 # -----------------------------
 # Depot berechnen
 # -----------------------------
-
 
 def berechne_werte(zustand):
     einzelwerte = {}
@@ -194,7 +190,6 @@ def berechne_werte(zustand):
 # Nachricht senden
 # -----------------------------
 
-
 def sende_ntfy(text):
     requests.post(
         f"https://ntfy.sh/{NTFY_TOPIC}",
@@ -205,7 +200,6 @@ def sende_ntfy(text):
 # -----------------------------
 # Hauptprogramm
 # -----------------------------
-
 
 def main():
     zustand = lade_zustand()
@@ -220,31 +214,23 @@ def main():
 
     vz = "+" if gesamtrendite >= 0 else ""
 
-    score = sum(
-        1 if d["richtung"] == "↑"
-        else -1 if d["richtung"] == "↓"
-        else 0
-        for d in einzelwerte.values()
-    )
-
-    gesamtpfeil = "↑" if score > 0 else "↓" if score < 0 else "→"
-
     teile = []
 
-    for name, daten in einzelwerte.items():
+    reihenfolge = ["World", "EM", "Europe"]
+
+    for name in reihenfolge:
+        daten = einzelwerte[name]
         vz_etf = "+" if daten["rendite"] >= 0 else ""
 
         teile.append(
-            f"{name}: {daten['wert']:.0f}€ "
+            f"{name} {daten['wert']:.0f}€ "
             f"({vz_etf}{daten['rendite']:.1f}%) "
             f"{daten['richtung']}"
         )
 
     nachricht = (
-        f"ETF-Sparplan {gesamtpfeil}\n"
-        f"Gesamt: {gesamtwert:.2f}€ "
-        f"({vz}{gesamtrendite:.2f}%)\n\n"
-        + "\n".join(teile)
+        f"{gesamtwert:.2f}€ ({vz}{gesamtrendite:.2f}%)\n\n"
+        + " · ".join(teile)
     )
 
     print(nachricht)
