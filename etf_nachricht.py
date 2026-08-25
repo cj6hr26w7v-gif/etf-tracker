@@ -4,10 +4,12 @@ import os
 import requests
 import yfinance as yf
 
-# ---- ntfy ----
+# -----------------------------
+# Einstellungen
+# -----------------------------
+
 NTFY_TOPIC = "hans-etf-xk92mq"
 
-# ---- ETF-Konfiguration ----
 ETFS = {
     "XDWD.DE": {"anteil_prozent": 0.50, "name": "World"},
     "XMME.DE": {"anteil_prozent": 0.30, "name": "EM"},
@@ -16,8 +18,10 @@ ETFS = {
 
 MONATLICHE_RATE = 300.0
 
-# ---- Zustandsdatei ----
-STATE_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "etf_state.json")
+STATE_DATEI = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "etf_state.json"
+)
 
 STARTWERTE = {
     "anteile": {
@@ -33,17 +37,26 @@ STARTWERTE = {
     "letzter_verarbeiteter_monat": "2026-08"
 }
 
+# -----------------------------
+# Zustand laden/speichern
+# -----------------------------
+
 
 def lade_zustand():
     if os.path.exists(STATE_DATEI):
         with open(STATE_DATEI, "r") as f:
             return json.load(f)
-    return dict(STARTWERTE)
+    return json.loads(json.dumps(STARTWERTE))
 
 
 def speichere_zustand(zustand):
     with open(STATE_DATEI, "w") as f:
         json.dump(zustand, f, indent=2)
+
+
+# -----------------------------
+# Börsenfunktionen
+# -----------------------------
 
 
 def naechster_handelstag(datum):
@@ -53,12 +66,12 @@ def naechster_handelstag(datum):
 
 
 def ausfuehrungstag(jahr, monat):
-    tag = datetime.date(jahr, monat, 20)
-    return naechster_handelstag(tag)
+    return naechster_handelstag(datetime.date(jahr, monat, 20))
 
 
 def hole_eroeffnungskurs(ticker, datum):
     t = yf.Ticker(ticker)
+
     hist = t.history(
         start=datum.isoformat(),
         end=(datum + datetime.timedelta(days=1)).isoformat()
@@ -88,6 +101,29 @@ def hole_aktuellen_kurs(ticker):
     return float(hist["Close"].iloc[-1])
 
 
+def hole_tagesrichtung(ticker):
+    t = yf.Ticker(ticker)
+    hist = t.history(period="2d")
+
+    if len(hist) < 2:
+        return "→"
+
+    gestern = float(hist["Close"].iloc[-2])
+    heute = float(hist["Close"].iloc[-1])
+
+    if heute > gestern:
+        return "↑"
+    elif heute < gestern:
+        return "↓"
+    else:
+        return "→"
+
+
+# -----------------------------
+# Sparplan
+# -----------------------------
+
+
 def pruefe_monatlichen_kauf(zustand):
     heute = datetime.date.today()
     dieser_monat = f"{heute.year}-{heute.month:02d}"
@@ -95,14 +131,14 @@ def pruefe_monatlichen_kauf(zustand):
     if zustand["letzter_verarbeiteter_monat"] == dieser_monat:
         return
 
-    tag = ausfuehrungstag(heute.year, heute.month)
+    kaufdatum = ausfuehrungstag(heute.year, heute.month)
 
-    if heute < tag:
+    if heute < kaufdatum:
         return
 
     for ticker, info in ETFS.items():
         betrag = MONATLICHE_RATE * info["anteil_prozent"]
-        kurs = hole_eroeffnungskurs(ticker, tag)
+        kurs = hole_eroeffnungskurs(ticker, kaufdatum)
 
         if kurs is None:
             return
@@ -113,10 +149,15 @@ def pruefe_monatlichen_kauf(zustand):
     zustand["letzter_verarbeiteter_monat"] = dieser_monat
 
 
+# -----------------------------
+# Depot berechnen
+# -----------------------------
+
+
 def berechne_werte(zustand):
     einzelwerte = {}
-    gesamtwert = 0.0
-    gesamt_eingezahlt = 0.0
+    gesamtwert = 0
+    gesamt_eingezahlt = 0
 
     for ticker, info in ETFS.items():
         kurs = hole_aktuellen_kurs(ticker)
@@ -127,11 +168,15 @@ def berechne_werte(zustand):
         wert = zustand["anteile"][ticker] * kurs
         eingezahlt = zustand["eingezahlt"][ticker]
 
-        rendite = ((wert - eingezahlt) / eingezahlt) * 100 if eingezahlt > 0 else 0
+        rendite = (
+            ((wert - eingezahlt) / eingezahlt) * 100
+            if eingezahlt > 0 else 0
+        )
 
         einzelwerte[info["name"]] = {
             "wert": wert,
-            "rendite": rendite
+            "rendite": rendite,
+            "richtung": hole_tagesrichtung(ticker)
         }
 
         gesamtwert += wert
@@ -139,18 +184,27 @@ def berechne_werte(zustand):
 
     gesamtrendite = (
         ((gesamtwert - gesamt_eingezahlt) / gesamt_eingezahlt) * 100
-        if gesamt_eingezahlt > 0
-        else 0
+        if gesamt_eingezahlt > 0 else 0
     )
 
     return gesamtwert, gesamtrendite, einzelwerte
 
 
-def sende_ntfy(nachricht):
+# -----------------------------
+# Nachricht senden
+# -----------------------------
+
+
+def sende_ntfy(text):
     requests.post(
         f"https://ntfy.sh/{NTFY_TOPIC}",
-        data=nachricht.encode("utf-8")
+        data=text.encode("utf-8")
     )
+
+
+# -----------------------------
+# Hauptprogramm
+# -----------------------------
 
 
 def main():
@@ -166,19 +220,31 @@ def main():
 
     vz = "+" if gesamtrendite >= 0 else ""
 
+    score = sum(
+        1 if d["richtung"] == "↑"
+        else -1 if d["richtung"] == "↓"
+        else 0
+        for d in einzelwerte.values()
+    )
+
+    gesamtpfeil = "↑" if score > 0 else "↓" if score < 0 else "→"
+
     teile = []
 
     for name, daten in einzelwerte.items():
         vz_etf = "+" if daten["rendite"] >= 0 else ""
 
         teile.append(
-            f"{name}: {daten['wert']:.0f}€ ({vz_etf}{daten['rendite']:.1f}%)"
+            f"{name}: {daten['wert']:.0f}€ "
+            f"({vz_etf}{daten['rendite']:.1f}%) "
+            f"{daten['richtung']}"
         )
 
     nachricht = (
-        f"ETF-Sparplan: {gesamtwert:.2f}€ "
-        f"({vz}{gesamtrendite:.2f}%) — "
-        + " | ".join(teile)
+        f"ETF-Sparplan {gesamtpfeil}\n"
+        f"Gesamt: {gesamtwert:.2f}€ "
+        f"({vz}{gesamtrendite:.2f}%)\n\n"
+        + "\n".join(teile)
     )
 
     print(nachricht)
