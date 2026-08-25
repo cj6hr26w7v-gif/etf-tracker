@@ -4,29 +4,33 @@ import os
 import requests
 import yfinance as yf
 
+# ---- ntfy ----
 NTFY_TOPIC = "hans-etf-xk92mq"
 
+# ---- ETF-Konfiguration ----
 ETFS = {
     "XDWD.DE": {"anteil_prozent": 0.50, "name": "World"},
     "XMME.DE": {"anteil_prozent": 0.30, "name": "EM"},
     "XSX6.DE": {"anteil_prozent": 0.20, "name": "Europe"},
 }
+
 MONATLICHE_RATE = 300.0
 
+# ---- Zustandsdatei ----
 STATE_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "etf_state.json")
 
 STARTWERTE = {
     "anteile": {
         "XDWD.DE": 3.1072,
         "XMME.DE": 3.2236,
-        "XSX6.DE": 1.0236,
+        "XSX6.DE": 1.0236
     },
     "eingezahlt": {
         "XDWD.DE": 424.985,
         "XMME.DE": 254.991,
-        "XSX6.DE": 169.994,
+        "XSX6.DE": 169.994
     },
-    "letzter_verarbeiteter_monat": "2026-08",
+    "letzter_verarbeiteter_monat": "2026-08"
 }
 
 
@@ -55,41 +59,57 @@ def ausfuehrungstag(jahr, monat):
 
 def hole_eroeffnungskurs(ticker, datum):
     t = yf.Ticker(ticker)
-    hist = t.history(start=datum.isoformat(), end=(datum + datetime.timedelta(days=1)).isoformat())
+    hist = t.history(
+        start=datum.isoformat(),
+        end=(datum + datetime.timedelta(days=1)).isoformat()
+    )
+
     if hist.empty:
         return None
+
     return float(hist["Open"].iloc[0])
 
 
 def hole_aktuellen_kurs(ticker):
     t = yf.Ticker(ticker)
+
     try:
         preis = t.fast_info.get("lastPrice")
         if preis:
             return float(preis)
     except Exception:
         pass
+
     hist = t.history(period="5d")
+
     if hist.empty:
         return None
+
     return float(hist["Close"].iloc[-1])
 
 
 def pruefe_monatlichen_kauf(zustand):
     heute = datetime.date.today()
     dieser_monat = f"{heute.year}-{heute.month:02d}"
+
     if zustand["letzter_verarbeiteter_monat"] == dieser_monat:
         return
+
     tag = ausfuehrungstag(heute.year, heute.month)
+
     if heute < tag:
         return
+
     for ticker, info in ETFS.items():
         betrag = MONATLICHE_RATE * info["anteil_prozent"]
         kurs = hole_eroeffnungskurs(ticker, tag)
+
         if kurs is None:
             return
+
         zustand["anteile"][ticker] += betrag / kurs
         zustand["eingezahlt"][ticker] += betrag
+
     zustand["letzter_verarbeiteter_monat"] = dieser_monat
 
 
@@ -100,144 +120,71 @@ def berechne_werte(zustand):
 
     for ticker, info in ETFS.items():
         kurs = hole_aktuellen_kurs(ticker)
+
         if kurs is None:
             return None, None, None
 
         wert = zustand["anteile"][ticker] * kurs
-        eingezahlt_etf = zustand["eingezahlt"][ticker]
-        rendite_etf = ((wert - eingezahlt_etf) / eingezahlt_etf) * 100 if eingezahlt_etf > 0 else 0.0
+        eingezahlt = zustand["eingezahlt"][ticker]
 
-        einzelwerte[info["name"]] = (wert, rendite_etf)
+        rendite = ((wert - eingezahlt) / eingezahlt) * 100 if eingezahlt > 0 else 0
+
+        einzelwerte[info["name"]] = {
+            "wert": wert,
+            "rendite": rendite
+        }
+
         gesamtwert += wert
-        gesamt_eingezahlt += eingezahlt_etf
+        gesamt_eingezahlt += eingezahlt
 
-    gesamtrendite = ((gesamtwert - gesamt_eingezahlt) / gesamt_eingezahlt) * 100 if gesamt_eingezahlt > 0 else 0.0
+    gesamtrendite = (
+        ((gesamtwert - gesamt_eingezahlt) / gesamt_eingezahlt) * 100
+        if gesamt_eingezahlt > 0
+        else 0
+    )
+
     return gesamtwert, gesamtrendite, einzelwerte
 
 
 def sende_ntfy(nachricht):
-    requests.post(f"https://ntfy.sh/{NTFY_TOPIC}", data=nachricht.encode("utf-8"))
+    requests.post(
+        f"https://ntfy.sh/{NTFY_TOPIC}",
+        data=nachricht.encode("utf-8")
+    )
 
 
 def main():
     zustand = lade_zustand()
+
     pruefe_monatlichen_kauf(zustand)
 
     gesamtwert, gesamtrendite, einzelwerte = berechne_werte(zustand)
+
     if gesamtwert is None:
-        print("Kursabruf fehlgeschlagen, keine Nachricht gesendet.")
+        print("Kursabruf fehlgeschlagen.")
         return
 
-    vz_gesamt = "+" if gesamtrendite >= 0 else ""
+    vz = "+" if gesamtrendite >= 0 else ""
+
     teile = []
-    for name, (wert, rendite_etf) in einzelwerte.items():
-        vz = "+" if rendite_etf >= 0 else ""
-        teile.append(f"{name}: {wert:.0f}EUR ({vz}{rendite_etf:.1f}%)")
-    teile_text = " | ".join(teile)
 
-    nachricht = f"ETF-Sparplan: {gesamtwert:.2f}EUR ({vz_gesamt}{gesamtrendite:.2f}%) -- {teile_text}"
+    for name, daten in einzelwerte.items():
+        vz_etf = "+" if daten["rendite"] >= 0 else ""
 
-    print(nachricht)
-    sende_ntfy(nachricht)
-    speichere_zustand(zustand)
+        teile.append(
+            f"{name}: {daten['wert']:.0f}€ ({vz_etf}{daten['rendite']:.1f}%)"
+        )
 
-
-if __name__ == "__main__":
-    main()    with open(STATE_DATEI, "w") as f:
-        json.dump(zustand, f, indent=2)
-
-
-def naechster_handelstag(datum):
-    while datum.weekday() >= 5:
-        datum += datetime.timedelta(days=1)
-    return datum
-
-
-def ausfuehrungstag(jahr, monat):
-    tag = datetime.date(jahr, monat, 20)
-    return naechster_handelstag(tag)
-
-
-def hole_eroeffnungskurs(ticker, datum):
-    t = yf.Ticker(ticker)
-    hist = t.history(start=datum.isoformat(), end=(datum + datetime.timedelta(days=1)).isoformat())
-    if hist.empty:
-        return None
-    return float(hist["Open"].iloc[0])
-
-
-def hole_aktuellen_kurs(ticker):
-    t = yf.Ticker(ticker)
-    try:
-        info = t.fast_info
-        waehrung = info.get("currency", "unbekannt")
-        preis = info.get("lastPrice")
-        print(f"{ticker} fast_info: Preis={preis}, Waehrung={waehrung}")
-        if preis:
-            return float(preis)
-    except Exception as e:
-        print(f"{ticker}: fast_info fehlgeschlagen: {e}")
-
-    hist = t.history(period="5d")
-    if hist.empty:
-        print(f"{ticker}: auch history() liefert nichts")
-        return None
-    print(f"{ticker} letzte 5 Handelstage:\n{hist[['Close']].to_string()}")
-    return float(hist["Close"].iloc[-1])
-
-
-def pruefe_monatlichen_kauf(zustand):
-    heute = datetime.date.today()
-    dieser_monat = f"{heute.year}-{heute.month:02d}"
-    if zustand["letzter_verarbeiteter_monat"] == dieser_monat:
-        return
-    tag = ausfuehrungstag(heute.year, heute.month)
-    if heute < tag:
-        return
-    for ticker, info in ETFS.items():
-        betrag = MONATLICHE_RATE * info["anteil_prozent"]
-        kurs = hole_eroeffnungskurs(ticker, tag)
-        if kurs is None:
-            return
-        zustand["anteile"][ticker] += betrag / kurs
-    zustand["eingezahlt"] += MONATLICHE_RATE
-    zustand["letzter_verarbeiteter_monat"] = dieser_monat
-
-
-def berechne_werte(zustand):
-    einzelwerte = {}
-    gesamtwert = 0.0
-    for ticker, info in ETFS.items():
-        kurs = hole_aktuellen_kurs(ticker)
-        if kurs is None:
-            return None, None, None
-        wert = zustand["anteile"][ticker] * kurs
-        einzelwerte[info["name"]] = wert
-        gesamtwert += wert
-    eingezahlt = zustand["eingezahlt"]
-    rendite = ((gesamtwert - eingezahlt) / eingezahlt) * 100 if eingezahlt > 0 else 0.0
-    return gesamtwert, rendite, einzelwerte
-
-
-def sende_ntfy(nachricht):
-    requests.post(f"https://ntfy.sh/{NTFY_TOPIC}", data=nachricht.encode("utf-8"))
-
-
-def main():
-    zustand = lade_zustand()
-    pruefe_monatlichen_kauf(zustand)
-
-    gesamtwert, rendite, einzelwerte = berechne_werte(zustand)
-    if gesamtwert is None:
-        print("Kursabruf fehlgeschlagen, keine Nachricht gesendet.")
-        return
-
-    vorzeichen = "+" if rendite >= 0 else ""
-    teile = " | ".join(f"{name}: {wert:.0f}EUR" for name, wert in einzelwerte.items())
-    nachricht = f"ETF-Sparplan: {gesamtwert:.2f}EUR ({vorzeichen}{rendite:.2f}%) -- {teile}"
+    nachricht = (
+        f"ETF-Sparplan: {gesamtwert:.2f}€ "
+        f"({vz}{gesamtrendite:.2f}%) — "
+        + " | ".join(teile)
+    )
 
     print(nachricht)
+
     sende_ntfy(nachricht)
+
     speichere_zustand(zustand)
 
 
