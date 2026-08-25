@@ -4,6 +4,10 @@
     "XMME.DE": 3.2236,
     "XSX6.DE": 1.0236
   },
-  "eingezahlt": 849.97,
+  "eingezahlt": {
+    "XDWD.DE": 424.985,
+    "XMME.DE": 254.991,
+    "XSX6.DE": 169.994
+  },
   "letzter_verarbeiteter_monat": "2026-08"
 }
