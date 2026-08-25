@@ -37,7 +37,6 @@ STARTWERTE = {
     "letzter_verarbeiteter_monat": "2026-08"
 }
 
-
 # -----------------------------
 # Zustand
 # -----------------------------
@@ -52,7 +51,6 @@ def lade_zustand():
 def speichere_zustand(zustand):
     with open(STATE_DATEI, "w") as f:
         json.dump(zustand, f, indent=2)
-
 
 # -----------------------------
 # Börsenfunktionen
@@ -116,7 +114,6 @@ def hole_tagesrichtung(ticker):
     else:
         return "→"
 
-
 # -----------------------------
 # Sparplan
 # -----------------------------
@@ -144,7 +141,6 @@ def pruefe_monatlichen_kauf(zustand):
         zustand["eingezahlt"][ticker] += betrag
 
     zustand["letzter_verarbeiteter_monat"] = dieser_monat
-
 
 # -----------------------------
 # Depot berechnen
@@ -185,7 +181,6 @@ def berechne_werte(zustand):
 
     return gesamtwert, gesamtrendite, einzelwerte
 
-
 # -----------------------------
 # Nachricht senden
 # -----------------------------
@@ -195,7 +190,6 @@ def sende_ntfy(text):
         f"https://ntfy.sh/{NTFY_TOPIC}",
         data=text.encode("utf-8")
     )
-
 
 # -----------------------------
 # Hauptprogramm
@@ -214,29 +208,33 @@ def main():
 
     vz = "+" if gesamtrendite >= 0 else ""
 
-    teile = []
+    score = sum(
+        1 if d["richtung"] == "↑"
+        else -1 if d["richtung"] == "↓"
+        else 0
+        for d in einzelwerte.values()
+    )
 
-    reihenfolge = ["World", "EM", "Europe"]
-
-    for name in reihenfolge:
-        daten = einzelwerte[name]
-        vz_etf = "+" if daten["rendite"] >= 0 else ""
-
-        teile.append(
-            f"{name} {daten['wert']:.0f}€ "
-            f"({vz_etf}{daten['rendite']:.1f}%) "
-            f"{daten['richtung']}"
-        )
+    gesamtpfeil = "↑" if score > 0 else "↓" if score < 0 else "→"
 
     nachricht = (
-        f"{gesamtwert:.2f}€ ({vz}{gesamtrendite:.2f}%)\n\n"
-        + " · ".join(teile)
+        f"{gesamtwert:.2f}€ ({vz}{gesamtrendite:.2f}%) {gesamtpfeil}\n"
+        f"World {einzelwerte['World']['wert']:.0f}€ "
+        f"({('+' if einzelwerte['World']['rendite'] >= 0 else '')}"
+        f"{einzelwerte['World']['rendite']:.1f}%) "
+        f"{einzelwerte['World']['richtung']}\n"
+        f"EM {einzelwerte['EM']['wert']:.0f}€ "
+        f"({('+' if einzelwerte['EM']['rendite'] >= 0 else '')}"
+        f"{einzelwerte['EM']['rendite']:.1f}%) "
+        f"{einzelwerte['EM']['richtung']}\n"
+        f"Europe {einzelwerte['Europe']['wert']:.0f}€ "
+        f"({('+' if einzelwerte['Europe']['rendite'] >= 0 else '')}"
+        f"{einzelwerte['Europe']['rendite']:.1f}%) "
+        f"{einzelwerte['Europe']['richtung']}"
     )
 
     print(nachricht)
-
     sende_ntfy(nachricht)
-
     speichere_zustand(zustand)
 
 
