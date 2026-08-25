@@ -60,16 +60,20 @@ def hole_eroeffnungskurs(ticker, datum):
 def hole_aktuellen_kurs(ticker):
     t = yf.Ticker(ticker)
     try:
-        preis = t.fast_info["lastPrice"]
+        info = t.fast_info
+        waehrung = info.get("currency", "unbekannt")
+        preis = info.get("lastPrice")
+        print(f"{ticker} fast_info: Preis={preis}, Waehrung={waehrung}")
         if preis:
             return float(preis)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"{ticker}: fast_info fehlgeschlagen: {e}")
+
     hist = t.history(period="5d")
     if hist.empty:
+        print(f"{ticker}: auch history() liefert nichts")
         return None
-    letztes_datum = hist.index[-1]
-    print(f"{ticker}: Kurs vom {letztes_datum.date()} verwendet")
+    print(f"{ticker} letzte 5 Handelstage:\n{hist[['Close']].to_string()}")
     return float(hist["Close"].iloc[-1])
 
 
