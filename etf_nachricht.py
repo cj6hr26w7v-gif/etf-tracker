@@ -10,10 +10,27 @@ import yfinance as yf
 
 NTFY_TOPIC = "hans-etf-xk92mq"
 
+# order_ticker = Kaufhistorie
+# kurs_ticker = Kursquelle (EM über Xetra)
 ETFS = {
-    "XDWD.DE": {"anteil_prozent": 0.50, "name": "World"},
-    "XMME.DE": {"anteil_prozent": 0.30, "name": "EM"},
-    "XSX6.DE": {"anteil_prozent": 0.20, "name": "Europe"},
+    "XDWD.DE": {
+        "order_ticker": "XDWD.DE",
+        "kurs_ticker": "XDWD.DE",
+        "anteil_prozent": 0.50,
+        "name": "World",
+    },
+    "XMME.DE": {
+        "order_ticker": "XMME.DE",
+        "kurs_ticker": "XMME.XE",
+        "anteil_prozent": 0.30,
+        "name": "EM",
+    },
+    "XSX6.DE": {
+        "order_ticker": "XSX6.DE",
+        "kurs_ticker": "XSX6.DE",
+        "anteil_prozent": 0.20,
+        "name": "Europe",
+    },
 }
 
 MONATLICHE_RATE = 300.0
@@ -27,19 +44,20 @@ STARTWERTE = {
     "anteile": {
         "XDWD.DE": 3.1072,
         "XMME.DE": 3.2236,
-        "XSX6.DE": 1.0236
+        "XSX6.DE": 1.0236,
     },
     "eingezahlt": {
         "XDWD.DE": 424.985,
         "XMME.DE": 254.991,
-        "XSX6.DE": 169.994
+        "XSX6.DE": 169.994,
     },
-    "letzter_verarbeiteter_monat": "2026-08"
+    "letzter_verarbeiteter_monat": "2026-08",
 }
 
 # -----------------------------
 # Zustand
 # -----------------------------
+
 
 def lade_zustand():
     if os.path.exists(STATE_DATEI):
@@ -52,9 +70,11 @@ def speichere_zustand(zustand):
     with open(STATE_DATEI, "w") as f:
         json.dump(zustand, f, indent=2)
 
+
 # -----------------------------
 # Börsenfunktionen
 # -----------------------------
+
 
 def naechster_handelstag(datum):
     while datum.weekday() >= 5:
@@ -68,9 +88,11 @@ def ausfuehrungstag(jahr, monat):
 
 def hole_eroeffnungskurs(ticker, datum):
     t = yf.Ticker(ticker)
+
     hist = t.history(
         start=datum.isoformat(),
-        end=(datum + datetime.timedelta(days=1)).isoformat()
+        end=(datum + datetime.timedelta(days=1)).isoformat(),
+        auto_adjust=False,
     )
 
     if hist.empty:
@@ -79,21 +101,20 @@ def hole_eroeffnungskurs(ticker, datum):
     return float(hist["Open"].iloc[0])
 
 
-def hole_aktuellen_kurs(ticker):
-    t = yf.Ticker(ticker)
+def hole_aktuellen_kurs(kurs_ticker):
+    t = yf.Ticker(kurs_ticker)
 
     hist = t.history(period="5d", auto_adjust=False)
 
     if hist.empty:
         return None
 
-    # offizieller Schlusskurs des letzten Handelstags
     return float(hist["Close"].iloc[-1])
 
 
-def hole_tagesrichtung(ticker):
-    t = yf.Ticker(ticker)
-    hist = t.history(period="2d")
+def hole_tagesrichtung(kurs_ticker):
+    t = yf.Ticker(kurs_ticker)
+    hist = t.history(period="2d", auto_adjust=False)
 
     if len(hist) < 2:
         return "→"
@@ -108,9 +129,11 @@ def hole_tagesrichtung(ticker):
     else:
         return "→"
 
+
 # -----------------------------
 # Sparplan
 # -----------------------------
+
 
 def pruefe_monatlichen_kauf(zustand):
     heute = datetime.date.today()
@@ -126,7 +149,8 @@ def pruefe_monatlichen_kauf(zustand):
 
     for ticker, info in ETFS.items():
         betrag = MONATLICHE_RATE * info["anteil_prozent"]
-        kurs = hole_eroeffnungskurs(ticker, kaufdatum)
+
+        kurs = hole_eroeffnungskurs(info["order_ticker"], kaufdatum)
 
         if kurs is None:
             return
@@ -136,9 +160,11 @@ def pruefe_monatlichen_kauf(zustand):
 
     zustand["letzter_verarbeiteter_monat"] = dieser_monat
 
+
 # -----------------------------
 # Depot berechnen
 # -----------------------------
+
 
 def berechne_werte(zustand):
     einzelwerte = {}
@@ -146,7 +172,7 @@ def berechne_werte(zustand):
     gesamt_eingezahlt = 0
 
     for ticker, info in ETFS.items():
-        kurs = hole_aktuellen_kurs(ticker)
+        kurs = hole_aktuellen_kurs(info["kurs_ticker"])
 
         if kurs is None:
             return None, None, None
@@ -162,7 +188,7 @@ def berechne_werte(zustand):
         einzelwerte[info["name"]] = {
             "wert": wert,
             "rendite": rendite,
-            "richtung": hole_tagesrichtung(ticker)
+            "richtung": hole_tagesrichtung(info["kurs_ticker"]),
         }
 
         gesamtwert += wert
@@ -175,19 +201,23 @@ def berechne_werte(zustand):
 
     return gesamtwert, gesamtrendite, einzelwerte
 
+
 # -----------------------------
 # Nachricht senden
 # -----------------------------
 
+
 def sende_ntfy(text):
     requests.post(
         f"https://ntfy.sh/{NTFY_TOPIC}",
-        data=text.encode("utf-8")
+        data=text.encode("utf-8"),
     )
+
 
 # -----------------------------
 # Hauptprogramm
 # -----------------------------
+
 
 def main():
     zustand = lade_zustand()
