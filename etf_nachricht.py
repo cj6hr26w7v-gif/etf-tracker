@@ -10,8 +10,6 @@ import yfinance as yf
 
 NTFY_TOPIC = "hans-etf-xk92mq"
 
-# order_ticker = Kaufhistorie
-# kurs_ticker = Kursquelle (EM über Xetra)
 ETFS = {
     "XDWD.DE": {
         "order_ticker": "XDWD.DE",
@@ -21,7 +19,7 @@ ETFS = {
     },
     "XMME.DE": {
         "order_ticker": "XMME.DE",
-        "kurs_ticker": "XMME.XE",
+        "kurs_ticker": "XMME.DE",
         "anteil_prozent": 0.30,
         "name": "EM",
     },
@@ -54,10 +52,10 @@ STARTWERTE = {
     "letzter_verarbeiteter_monat": "2026-08",
 }
 
+
 # -----------------------------
 # Zustand
 # -----------------------------
-
 
 def lade_zustand():
     if os.path.exists(STATE_DATEI):
@@ -74,7 +72,6 @@ def speichere_zustand(zustand):
 # -----------------------------
 # Börsenfunktionen
 # -----------------------------
-
 
 def naechster_handelstag(datum):
     while datum.weekday() >= 5:
@@ -101,6 +98,7 @@ def hole_eroeffnungskurs(ticker, datum):
     return float(hist["Open"].iloc[0])
 
 
+# offizieller Schlusskurs statt fast_info
 def hole_aktuellen_kurs(kurs_ticker):
     t = yf.Ticker(kurs_ticker)
 
@@ -114,6 +112,7 @@ def hole_aktuellen_kurs(kurs_ticker):
 
 def hole_tagesrichtung(kurs_ticker):
     t = yf.Ticker(kurs_ticker)
+
     hist = t.history(period="2d", auto_adjust=False)
 
     if len(hist) < 2:
@@ -133,7 +132,6 @@ def hole_tagesrichtung(kurs_ticker):
 # -----------------------------
 # Sparplan
 # -----------------------------
-
 
 def pruefe_monatlichen_kauf(zustand):
     heute = datetime.date.today()
@@ -164,7 +162,6 @@ def pruefe_monatlichen_kauf(zustand):
 # -----------------------------
 # Depot berechnen
 # -----------------------------
-
 
 def berechne_werte(zustand):
     einzelwerte = {}
@@ -206,7 +203,6 @@ def berechne_werte(zustand):
 # Nachricht senden
 # -----------------------------
 
-
 def sende_ntfy(text):
     requests.post(
         f"https://ntfy.sh/{NTFY_TOPIC}",
@@ -217,7 +213,6 @@ def sende_ntfy(text):
 # -----------------------------
 # Hauptprogramm
 # -----------------------------
-
 
 def main():
     zustand = lade_zustand()
