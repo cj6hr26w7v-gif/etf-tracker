@@ -2,10 +2,7 @@ name: ETF Nachricht
 
 on:
   schedule:
-    - cron: '0 6 * * *'
-    - cron: '0 10 * * *'
-    - cron: '0 14 * * *'
-    - cron: '0 18 * * *'
+    - cron: "0 6,10,14,18 * * 1-5"
   workflow_dispatch:
 
 jobs:
