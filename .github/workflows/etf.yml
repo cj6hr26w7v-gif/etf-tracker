@@ -2,7 +2,7 @@ name: ETF Tracker
 
 on:
   schedule:
-    - cron: "0 6,10,14,18 * * 1-5"
+    - cron: "58 5,9,13,17 * * 1-5"
   workflow_dispatch:
 
 permissions:
