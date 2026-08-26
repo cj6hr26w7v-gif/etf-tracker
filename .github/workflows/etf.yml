@@ -1,9 +1,14 @@
 name: ETF Nachricht
 
+name: ETF Tracker
+
 on:
   schedule:
     - cron: "0 6,10,14,18 * * 1-5"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   sende-etf-update:
