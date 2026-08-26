@@ -82,18 +82,12 @@ def hole_eroeffnungskurs(ticker, datum):
 def hole_aktuellen_kurs(ticker):
     t = yf.Ticker(ticker)
 
-    try:
-        preis = t.fast_info.get("lastPrice")
-        if preis:
-            return float(preis)
-    except Exception:
-        pass
-
-    hist = t.history(period="5d")
+    hist = t.history(period="5d", auto_adjust=False)
 
     if hist.empty:
         return None
 
+    # offizieller Schlusskurs des letzten Handelstags
     return float(hist["Close"].iloc[-1])
 
 
